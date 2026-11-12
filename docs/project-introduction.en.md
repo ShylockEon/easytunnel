@@ -260,7 +260,7 @@ No. Keep-alive soft close plus backpressure preserves trailing bytes; verified w
 
 ## 14. Project information
 
-- Repository: https://gitee.com/charlottede/easytunnel
-- Releases: https://gitee.com/charlottede/easytunnel/releases/tag/v2.4.0
+- Repository: https://gitee.com/ShylockEon/easytunnel
+- Releases: https://gitee.com/ShylockEon/easytunnel/releases/tag/v2.4.0
 - Stack: Node.js (server), JavaScript + PowerShell/WinForms (client), plain HTML/CSS/JS (console)
 - License: Apache License 2.0 (see `LICENSE`); third-party notices in `THIRD_PARTY_NOTICES.md`
