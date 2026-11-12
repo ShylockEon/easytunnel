@@ -17,6 +17,67 @@ A zero-dependency intranet-penetration tool: one server with a public IP + any i
 
 > 想先了解全貌？看 **[项目介绍](docs/项目介绍.md)**（背景、架构、原理、验证数据、FAQ）；英文版见 **[Project Introduction](docs/project-introduction.en.md)**。
 
+## 快速部署（约 5 分钟）
+
+> 前提：一台可配置安全组的 Linux 公网服务器，一台内网 Windows 机器。
+
+### 1. 服务端：启动
+
+把 `server/` 目录整体上传到服务器（示例路径 `/opt/easytunnel`），执行：
+
+```bash
+cd /opt/easytunnel
+cp config.example.json config.json     # 可选；不复制则首次启动自动生成密码/令牌
+docker compose up -d
+docker compose logs easytunnel | tail -20   # 记下「管理密码」和「客户端令牌」
+```
+
+> 不用 Docker 也可以：装 Node.js 18+ 后执行 `node server.js`。
+> 若提示 `docker compose` 不存在，把命令换成 `docker-compose`（旧版）。
+
+### 2. 放行端口
+
+在云安全组 / 防火墙放行：
+
+- `9000`：管理页（建议只对你的来源 IP 开放）
+- `9001`：客户端连入
+- 之后新增映射时，对应的**公网端口**（如 `18080`）
+
+### 3. 登录管理页
+
+浏览器打开 `http://<公网IP>:9000`，用管理密码登录。
+
+### 4. 添加客户端并复制配置
+
+「客户端」卡片 →「添加客户端」→ 填名称 → 在该行点「复制配置」，得到该客户端的 `client.json`：
+
+```json
+{ "server": "<公网IP>:9001", "token": "<该客户端令牌>", "name": "" }
+```
+
+### 5. 内网机器：运行客户端
+
+把 `EasyTunnelClient.exe` 与 `client.json` 放在**同一目录**，双击运行。窗口显示「已连接」即成功，可最小化到托盘常驻。
+
+### 6. 添加映射并验证
+
+「映射列表 → 添加映射」：目标客户端选刚添加的客户端，填公网端口 `18080` → 内网 `127.0.0.1:8080`，保存。
+外网访问 `http://<公网IP>:18080` 应到达内网服务；目标客户端离线时映射会显示「等待客户端」。
+
+### 升级与回滚
+
+```bash
+cd /opt/easytunnel
+cp server.js server.js.bak && cp admin.html admin.html.bak     # 备份
+# 覆盖新的 server.js / admin.html 后：
+docker compose restart easytunnel
+
+# 回滚：把 .bak 覆盖回去，再 restart
+```
+
+> 服务端源码是挂载进容器的，更新文件只需 `restart`，无需重建镜像；`config.json` 不要覆盖。
+> 旧版单客户端配置会自动迁移为「默认客户端」，原令牌继续可用。
+
 ## 特性
 
 - **服务端零依赖**：纯 Node.js 标准库，`node server.js` 即可运行，也可用 Docker
@@ -139,6 +200,67 @@ Node.js 的完整许可文本随客户端包分发放于 `LICENSES/Node.js-LICEN
 EasyTunnel supports **TCP port mappings** (HTTP, SSH, databases, RDP, and any other TCP service) and **HTTPS path mappings** (sharing the admin port and routing by path prefix to different internal services). Multiple clients can be online at the same time: each machine has its own token, mappings can target a specific client, and one client going offline only affects its own mappings.
 
 > Want the full picture first? See the **[Project Introduction (English)](docs/project-introduction.en.md)** — or the [Chinese version](docs/项目介绍.md).
+
+### Quick deployment (~5 minutes)
+
+> Prerequisites: a Linux server with a public IP (where you can edit the security group) and a Windows machine on the internal network.
+
+#### 1. Server: start it
+
+Upload the whole `server/` directory (e.g. to `/opt/easytunnel`) and run:
+
+```bash
+cd /opt/easytunnel
+cp config.example.json config.json     # optional; a password/token is generated on first run otherwise
+docker compose up -d
+docker compose logs easytunnel | tail -20   # note the admin password and client tokens
+```
+
+> No Docker? Install Node.js 18+ and run `node server.js`.
+> If `docker compose` is not available, use `docker-compose` (v1).
+
+#### 2. Open the ports
+
+Allow these in your cloud security group / firewall:
+
+- `9000` — admin page (restrict it to your own source IPs)
+- `9001` — client connections
+- the **public port** of every mapping you add later (e.g. `18080`)
+
+#### 3. Sign in
+
+Open `http://<PUBLIC_IP>:9000` and sign in with the admin password.
+
+#### 4. Add a client and copy its config
+
+“Clients” card → “Add client” → enter a name → click “Copy config” on that row. You get that client's `client.json`:
+
+```json
+{ "server": "<PUBLIC_IP>:9001", "token": "<client token>", "name": "" }
+```
+
+#### 5. Internal machine: run the client
+
+Put `EasyTunnelClient.exe` and `client.json` in the **same directory** and double-click the exe. When the window shows “connected”, it works; you can minimize it to the tray.
+
+#### 6. Add a mapping and verify
+
+“Mappings” → “Add mapping”: pick the client you just added, public port `18080` → internal `127.0.0.1:8080`, save.
+Then `http://<PUBLIC_IP>:18080` should reach the internal service. If the target client is offline, the mapping shows “waiting for client”.
+
+#### Upgrade and rollback
+
+```bash
+cd /opt/easytunnel
+cp server.js server.js.bak && cp admin.html admin.html.bak     # back up
+# overwrite with the new server.js / admin.html, then:
+docker compose restart easytunnel
+
+# rollback: copy the .bak files back and restart
+```
+
+> Source files are mounted into the container, so a `restart` is enough — no image rebuild. Do not overwrite `config.json`.
+> A legacy single-client config is migrated to a “Default client”; the original token keeps working.
 
 ### Features
 
