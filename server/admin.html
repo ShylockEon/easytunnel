@@ -355,6 +355,20 @@
     </div>
   </div>
 
+  <div class="modal-mask" id="clientEditModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientEditTitle">
+      <h2 id="clientEditTitle">重命名客户端</h2>
+      <p class="hint">只改显示名称，不影响令牌、在线状态和已绑定的映射。</p>
+      <form class="form" id="clientEditForm" autocomplete="off">
+        <div style="grid-column:1/-1"><label for="ceName">客户端名称</label><input id="ceName" placeholder="例如 办公室电脑 / NAS"></div>
+        <div class="actions">
+          <button class="primary" type="submit">保存</button>
+          <button class="ghost" type="button" id="clientEditCancel">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-mask" id="pathModal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pathFormTitle">
       <h2 id="pathFormTitle">添加路径映射</h2>
@@ -709,6 +723,7 @@
         '<td class="mono">' + (c.channels || 0) + '</td>' +
         '<td><div class="ops">' +
           '<button data-cact="cfg" data-cid="' + esc(c.id) + '">复制配置</button>' +
+          '<button data-cact="rename" data-cid="' + esc(c.id) + '">重命名</button>' +
           '<button data-cact="token" data-cid="' + esc(c.id) + '">重置令牌</button>' +
           '<button class="danger" data-cact="del" data-cid="' + esc(c.id) + '">删除</button>' +
         '</div></td></tr>';
@@ -1002,6 +1017,19 @@
     setTimeout(function () { $('cName').focus(); }, 30);
   };
   $('clientCancel').onclick = function () { closeModal('clientModal'); };
+  var editingClientId = null;
+  $('clientEditCancel').onclick = function () { closeModal('clientEditModal'); editingClientId = null; };
+  $('clientEditForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (!editingClientId) return;
+    var name = $('ceName').value.trim();
+    if (!name) { toast('请输入客户端名称', true); return; }
+    var id = editingClientId;
+    api('/api/clients/' + id, 'PUT', { name: name }).then(function (j) {
+      render(j); closeModal('clientEditModal'); editingClientId = null;
+      toast('已重命名');
+    }).catch(function (e) { toast(e.message, true); });
+  });
   $('clientForm').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var name = $('cName').value.trim();
@@ -1017,7 +1045,12 @@
     var act = btn.getAttribute('data-cact'), id = btn.getAttribute('data-cid');
     var c = ((state && state.clients) || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return;
-    if (act === 'cfg') {
+    if (act === 'rename') {
+      editingClientId = id;
+      $('ceName').value = c.name || '';
+      openModal('clientEditModal');
+      setTimeout(function () { $('ceName').focus(); }, 30);
+    } else if (act === 'cfg') {
       api('/api/client-config?cid=' + encodeURIComponent(id), 'GET').then(function (j) {
         var text = JSON.stringify({ server: j.server, token: j.token, name: j.name, clientId: j.clientId }, null, 2);
         copyText(text);
@@ -1107,8 +1140,9 @@
     if (isModalOpen('mapModal')) { closeModal('mapModal'); clearForm(); }
     if (isModalOpen('pathModal')) { closeModal('pathModal'); clearPathForm(); }
     if (isModalOpen('clientModal')) closeModal('clientModal');
+    if (isModalOpen('clientEditModal')) { closeModal('clientEditModal'); editingClientId = null; }
   });
-  ['mapModal', 'pathModal', 'clientModal'].forEach(function (id) {
+  ['mapModal', 'pathModal', 'clientModal', 'clientEditModal'].forEach(function (id) {
     $(id).addEventListener('mousedown', function (e) {
       if (e.target !== $(id)) return;   // 只有点遮罩本身才关
       closeModal(id);
