@@ -9,8 +9,6 @@ A zero-dependency intranet-penetration tool: one server with a public IP + any i
 
 ---
 
-<a id="chinese"></a>
-
 ## 简介
 
 支持 **TCP 端口映射**（HTTP / SSH / 数据库 / 远程桌面等）与 **HTTPS 路径映射**
@@ -133,8 +131,6 @@ Node.js 的完整许可文本随客户端包分发放于 `LICENSES/Node.js-LICEN
 > 使用「EasyTunnel」名称不构成商标授权；Apache 2.0 仅授予版权与专利许可。
 
 ---
-
-<a id="english"></a>
 
 ## English
 
