@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1120"/>
+      <stop offset="0.55" stop-color="#15243c"/>
+      <stop offset="1" stop-color="#0c1626"/>
+    </linearGradient>
+    <radialGradient id="glowWarm" cx="0.18" cy="0.92" r="0.72">
+      <stop offset="0" stop-color="#ff7a2f" stop-opacity="0.28"/>
+      <stop offset="0.55" stop-color="#ff7a2f" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#ff7a2f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCool" cx="0.82" cy="0.18" r="0.6">
+      <stop offset="0" stop-color="#5aa9ff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#5aa9ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#33506b" stop-opacity="0.85"/>
+      <stop offset="0.25" stop-color="#1d3349"/>
+      <stop offset="1" stop-color="#0b1522"/>
+    </linearGradient>
+    <linearGradient id="suit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb066"/>
+      <stop offset="0.32" stop-color="#ff8a3d"/>
+      <stop offset="0.72" stop-color="#f0651f"/>
+      <stop offset="1" stop-color="#c9450f"/>
+    </linearGradient>
+    <linearGradient id="suitDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9531a"/>
+      <stop offset="1" stop-color="#a3360a"/>
+    </linearGradient>
+    <linearGradient id="helmet" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#e7eef8"/>
+      <stop offset="1" stop-color="#b9c7da"/>
+    </linearGradient>
+    <linearGradient id="visor" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#1c4a6e"/>
+      <stop offset="0.45" stop-color="#0d2438"/>
+      <stop offset="1" stop-color="#060f1a"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cfd9e6"/>
+      <stop offset="1" stop-color="#8796a9"/>
+    </linearGradient>
+    <linearGradient id="wing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc066"/>
+      <stop offset="1" stop-color="#ff6a1f"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <filter id="soft2" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <clipPath id="frame">
+      <rect x="0" y="0" width="1024" height="1024" rx="212"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#glowWarm)"/>
+    <rect width="1024" height="1024" fill="url(#glowCool)"/>
+
+    <!-- mist horizon -->
+    <ellipse cx="512" cy="700" rx="620" ry="120" fill="#9fc4e0" opacity="0.10" filter="url(#soft)"/>
+    <ellipse cx="512" cy="672" rx="470" ry="60" fill="#dbe9f5" opacity="0.08" filter="url(#soft)"/>
+
+    <!-- water -->
+    <rect x="0" y="700" width="1024" height="324" fill="url(#water)"/>
+    <ellipse cx="512" cy="712" rx="420" ry="26" fill="#9fc4e0" opacity="0.10" filter="url(#soft2)"/>
+
+    <!-- astronaut reflection -->
+    <ellipse cx="512" cy="780" rx="170" ry="46" fill="#ff8a3d" opacity="0.16" filter="url(#soft)"/>
+
+    <!-- body -->
+    <g>
+      <!-- backpack hint -->
+      <rect x="424" y="600" width="176" height="150" rx="52" fill="#7f95ad" opacity="0.55"/>
+      <!-- arms -->
+      <path d="M394 640 q-46 44 -48 110 q-1 40 30 52 q28 10 42 -14 q14 -26 6 -62 q-6 -40 -16 -78 z" fill="url(#suitDark)"/>
+      <path d="M630 640 q46 44 48 110 q1 40 -30 52 q-28 10 -42 -14 q-14 -26 -6 -62 q6 -40 16 -78 z" fill="url(#suitDark)"/>
+      <!-- torso -->
+      <path d="M512 556
+               c 74 0 126 26 138 74
+               c 10 40 14 96 12 150
+               c -1 30 -18 46 -48 50
+               c -66 9 -138 9 -204 0
+               c -30 -4 -47 -20 -48 -50
+               c -2 -54 2 -110 12 -150
+               c 12 -48 64 -74 138 -74 z"
+            fill="url(#suit)"/>
+      <!-- shoulder shading -->
+      <path d="M512 556 c 74 0 126 26 138 74 c -16 -26 -54 -44 -100 -48 c -18 34 -58 58 -100 62 c -22 2 -42 0 -60 -6 c 12 -48 64 -74 138 -74 z" fill="#ffc283" opacity="0.35"/>
+      <!-- chest panel -->
+      <rect x="450" y="652" width="124" height="80" rx="16" fill="#132033" stroke="#3a4c66" stroke-width="3"/>
+      <circle cx="478" cy="678" r="7" fill="#4f9dff"/>
+      <circle cx="502" cy="678" r="7" fill="#3fd48b"/>
+      <rect x="470" y="698" width="84" height="6" rx="3" fill="#ff8a3d" opacity="0.9"/>
+      <rect x="470" y="712" width="52" height="6" rx="3" fill="#8fa0b8" opacity="0.7"/>
+      <!-- strap -->
+      <path d="M436 610 q76 34 152 0" fill="none" stroke="#a3360a" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+      <!-- seams -->
+      <path d="M512 590 v 210" stroke="#a3360a" stroke-width="5" opacity="0.35"/>
+      <path d="M430 700 q-8 60 -4 108" fill="none" stroke="#a3360a" stroke-width="5" opacity="0.3"/>
+      <path d="M594 700 q8 60 4 108" fill="none" stroke="#a3360a" stroke-width="5" opacity="0.3"/>
+      <!-- gloves -->
+      <ellipse cx="356" cy="812" rx="30" ry="24" fill="#e9eff7"/>
+      <ellipse cx="668" cy="812" rx="30" ry="24" fill="#e9eff7"/>
+
+      <!-- neck ring -->
+      <rect x="448" y="560" width="128" height="34" rx="17" fill="url(#metal)"/>
+      <rect x="460" y="570" width="104" height="10" rx="5" fill="#5d6d82" opacity="0.6"/>
+
+      <!-- helmet -->
+      <circle cx="512" cy="446" r="152" fill="url(#helmet)"/>
+      <circle cx="512" cy="446" r="152" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="6"/>
+      <!-- visor -->
+      <ellipse cx="512" cy="452" rx="112" ry="120" fill="url(#visor)"/>
+      <ellipse cx="512" cy="452" rx="112" ry="120" fill="none" stroke="#0a1420" stroke-opacity="0.55" stroke-width="5"/>
+      <!-- visor reflections -->
+      <path d="M438 404 q38 -38 92 -30 q-56 8 -78 54 q-10 20 -14 40 q-10 -34 0 -64 z" fill="#bfe2ff" opacity="0.45"/>
+      <path d="M560 520 q34 -10 52 -40 q6 30 -14 50 q-16 16 -38 12 z" fill="#8fd0ff" opacity="0.25"/>
+      <!-- helmet highlight -->
+      <path d="M396 396 q30 -54 92 -70 q-44 30 -60 78 q-18 44 -10 86 q-30 -40 -22 -94 z" fill="#ffffff" opacity="0.55"/>
+    </g>
+
+    <!-- butterflies -->
+    <g fill="none">
+      <g transform="translate(636 330) rotate(14)">
+        <path d="M0 0 c-30 -34 -70 -36 -84 -12 c-14 24 12 52 58 56 c-38 14 -48 46 -26 60 c22 14 50 -6 56 -46 z" fill="url(#wing)" opacity="0.95"/>
+        <path d="M0 0 c30 -34 70 -36 84 -12 c14 24 -12 52 -58 56 c38 14 48 46 26 60 c-22 14 -50 -6 -56 -46 z" fill="url(#wing)" opacity="0.95"/>
+        <path d="M0 -6 q6 28 0 58" stroke="#4a1c05" stroke-width="6" stroke-linecap="round"/>
+        <path d="M0 -6 q-8 -16 -18 -24 M0 -6 q8 -16 18 -24" stroke="#4a1c05" stroke-width="5" stroke-linecap="round"/>
+      </g>
+      <g transform="translate(368 300) rotate(-20) scale(0.62)">
+        <path d="M0 0 c-30 -34 -70 -36 -84 -12 c-14 24 12 52 58 56 c-38 14 -48 46 -26 60 c22 14 50 -6 56 -46 z" fill="url(#wing)" opacity="0.9"/>
+        <path d="M0 0 c30 -34 70 -36 84 -12 c14 24 -12 52 -58 56 c38 14 48 46 26 60 c-22 14 -50 -6 -56 -46 z" fill="url(#wing)" opacity="0.9"/>
+        <path d="M0 -6 q6 28 0 58" stroke="#4a1c05" stroke-width="6" stroke-linecap="round"/>
+      </g>
+      <g transform="translate(676 232) rotate(28) scale(0.44)">
+        <path d="M0 0 c-30 -34 -70 -36 -84 -12 c-14 24 12 52 58 56 c-38 14 -48 46 -26 60 c22 14 50 -6 56 -46 z" fill="url(#wing)" opacity="0.85"/>
+        <path d="M0 0 c30 -34 70 -36 84 -12 c14 24 -12 52 -58 56 c38 14 48 46 26 60 c-22 14 -50 -6 -56 -46 z" fill="url(#wing)" opacity="0.85"/>
+        <path d="M0 -6 q6 28 0 58" stroke="#4a1c05" stroke-width="6" stroke-linecap="round"/>
+      </g>
+    </g>
+
+    <!-- water ripples -->
+    <g stroke="#a9cbe6" stroke-linecap="round" fill="none">
+      <path d="M268 778 q70 -10 140 0" stroke-width="4" opacity="0.18"/>
+      <path d="M616 800 q64 -8 128 0" stroke-width="4" opacity="0.16"/>
+      <path d="M224 838 q86 -12 172 0" stroke-width="3" opacity="0.12"/>
+      <path d="M636 858 q76 -10 152 0" stroke-width="3" opacity="0.11"/>
+    </g>
+
+    <!-- vignette -->
+    <rect width="1024" height="1024" fill="none" stroke="#000000" stroke-opacity="0.35" stroke-width="18"/>
+    <rect x="18" y="18" width="988" height="988" rx="200" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+  </g>
+</svg>

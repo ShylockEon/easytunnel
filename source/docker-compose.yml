@@ -1,0 +1,80 @@
+# ============================================================
+# EasyTunnel 服务端（放在有公网 IP 的服务器上）
+# ★ 服务器上必须把这 3 个文件放在同一个目录，并先 cd 进这个目录再执行 up：
+#     docker-compose.yml、server.js、admin.html
+#   容器会把该目录挂载到 /app；少了 server.js 就会报 Cannot find module '/app/server.js'。
+# 然后：
+#
+#   docker compose up -d                    # 新版（v2 插件，推荐）
+#   docker-compose up -d                    # 旧版（v1，也可用）
+#   docker compose logs easytunnel           # 首次启动在这里看管理密码 / 客户端令牌
+#   docker compose down                      # 停止
+#
+# 管理页： http://<公网IP>:9000
+# 客户端： Windows 双击 EasyTunnelClient.exe（同目录放 client.json）
+#
+# ★ 为什么用 host 网络：映射的「公网端口」是在网页里随时新增的，
+#   Docker 的 ports 是静态声明的，做不到自动放行。host 模式下服务端
+#   直接监听宿主机端口，网页加几条映射就通几条，不用改这个文件、不用重建容器。
+# ★ 服务器安全组 / 防火墙仍需放行 9000、9001 和每个映射的公网端口。
+# ============================================================
+
+# 显式声明格式版本：兼容旧版 docker-compose(v1)。
+# 新版 Docker 用 `docker compose`（空格，v2 插件），会忽略这一行并给一条无害提示。
+version: "2.4"
+
+services:
+  easytunnel:
+    image: node:22-alpine
+    container_name: easytunnel
+    restart: unless-stopped
+    network_mode: host          # Linux 服务器推荐；非 Linux 见文件末尾备选方案
+    working_dir: /app
+    volumes:
+      - .:/app                  # config.json 落在宿主机当前目录，容器重建不丢配置
+    environment:
+      TZ: Asia/Shanghai
+      ADMIN_PORT: "9000"        # Web 管理页端口
+      TUNNEL_PORT: "9001"       # 内网客户端连入的端口
+      # ADMIN_PASSWORD: "change-me"   # 不填 = 首次启动随机生成，用 logs 查看；也可在这里直接指定
+    # 启动前自检：文件没拷全时给出能看懂的提示，而不是 Node 的 MODULE_NOT_FOUND
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /app/server.js ]; then
+          echo "EasyTunnel 启动失败：/app/server.js 不存在";
+          echo "请把 docker-compose.yml、server.js、admin.html 三个文件放在服务器同一目录，再执行 up";
+          exit 1;
+        fi
+        if [ ! -f /app/admin.html ]; then
+          echo "EasyTunnel 启动失败：/app/admin.html 不存在（管理页需要它）";
+          echo "请把 admin.html 放到 docker-compose.yml 同一目录";
+          exit 1;
+        fi
+        exec node server.js
+    init: true
+    healthcheck:
+      # 端口写死，避开不同 Compose 版本对 $$ 转义的差异；若改 ADMIN_PORT 请同步改这里
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ------------------------------------------------------------
+# 备选：Windows / macOS 的 Docker Desktop 没有真正的 host 网络时，
+# 删掉上面的 network_mode: host，改用下面这段固定端口段
+# （此时网页里新增映射的公网端口必须落在 20000-20100 范围内）：
+#
+#     ports:
+#       - "9000:9000"
+#       - "9001:9001"
+#       - "20000-20100:20000-20100"
+#
+# ------------------------------------------------------------

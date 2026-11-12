@@ -1,39 +1,99 @@
-# easyfrp
+# EasyTunnel
 
-#### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
+零依赖的内网穿透工具：一台有公网 IP 的服务器 + 任意内网机器（Windows 单文件客户端），
+浏览器里配置映射，保存即生效，无需改配置文件、无需重启。
 
-#### 软件架构
-软件架构说明
+支持 **TCP 端口映射**（HTTP / SSH / 数据库 / 远程桌面等）与 **HTTPS 路径映射**
+（共用管理端口，按路径前缀分流到不同内网服务）。
 
+## 特性
 
-#### 安装教程
+- **服务端零依赖**：纯 Node.js 标准库，`node server.js` 即可运行，也可用 Docker
+- **客户端单文件**：Windows 下打包成 ~84 MB 的 `EasyTunnelClient.exe`，不需要装 Node
+- **管理页即配置**：端口映射、路径映射、服务端地址、令牌都在网页里增删改，实时生效
+- **暗色控制台**：实时速率曲线、逐映射流量统计、连接数、HTTPS 证书信息
+- **稳定转发**：自带帧协议（9 字节头 + 通道多路复用）、背压 pause/resume、
+  心跳与 40 秒超时自愈、断线自动重连、keep-alive 连接软关闭（大文件不截断）
+- **HTTPS 路径映射**：管理端口按首字节分流 TLS / 明文，自签证书可下载安装
+- **安全**：管理页与 API 需密码；令牌认证；登录失败限速；恒定时间比较
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## 目录结构
 
-#### 使用说明
+```
+.
+├── source/                 完整源码（开发、打包用）
+│   ├── server.js           服务端
+│   ├── admin.html          管理页（单文件，暗色 UI）
+│   ├── client.js           客户端（协议 + 图形窗口调度）
+│   ├── gui.ps1             客户端图形界面（WinForms，内嵌）
+│   ├── build-exe.js        打包成单文件 exe（Node SEA + postject）
+│   ├── default.example.json 内置客户端配置示例（复制为 default.json 后打包）
+│   ├── docker-compose.yml
+│   └── icon/ tools/        图标与 rcedit（写 exe 图标/版本信息）
+├── server/                 服务端部署目录
+│   ├── server.js  admin.html  docker-compose.yml
+│   ├── config.example.json 配置模板（复制为 config.json）
+│   ├── certs/              HTTPS 证书（cert.pem / key.pem，自签即可）
+│   └── downloads/          管理页「下载客户端」用的 client.zip
+└── client/                 客户端分发目录
+    ├── client.example.json 配置模板（复制为 client.json）
+    └── （EasyTunnelClient.exe 构建产物，未入库）
+```
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+> 仓库不包含 exe 与 zip 发布包；运行时生成的 `config.json`、`client.json`、
+> `default.json` 含密码/令牌，已在 `.gitignore` 中排除。
 
-#### 参与贡献
+## 快速开始
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+### 1. 服务端（公网服务器）
 
+```bash
+cd server
+cp config.example.json config.json     # 首次也可直接启动，会随机生成密码/令牌
+docker compose up -d                   # 或：node server.js
+docker compose logs easytunnel         # 查看管理密码与客户端令牌
+```
 
-#### 特技
+管理页：`http://<公网IP>:9000`（密码见配置文件或启动日志）。
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+> `docker-compose.yml` 使用 `network_mode: host`：映射的公网端口在网页里随时新增，
+> 容器直接监听宿主机端口，加端口不用改 compose、不用重建容器。
+> 需在安全组/防火墙放行 9000、9001 以及每条映射的公网端口。
+
+### 2. 客户端（内网机器）
+
+从管理页「客户端」卡片下载 `client.json`，与 `EasyTunnelClient.exe` 放同一目录，双击即可
+（也可在图形窗口里直接填地址和令牌）。连接成功后窗口显示「已连接」，可最小化到托盘常驻。
+
+### 3. 配置映射
+
+管理页「映射列表 → 添加映射」：公网端口 → 内网地址:端口（如 `18080 → 127.0.0.1:8080`）。
+外网访问 `http://<公网IP>:18080` 即到达内网服务。路径映射同理，形如 `https://<公网IP>:9000/kod/`。
+
+## 从源码构建
+
+```bash
+# 客户端 exe（Windows，Node >= 20，首次会通过 npx 获取 postject）
+cd source
+cp default.example.json default.json   # 填入自己的服务器地址与令牌（可选，不打进去也行）
+node build-exe.js                      # 产物：EasyTunnelClient.exe
+
+# 服务端无需构建
+node server.js
+```
+
+## 协议摘要
+
+单条 TCP 控制连接上多路复用：帧头 `type(1) | channelId(4) | length(4)`，`type=1` 为 JSON
+控制帧，`type=2` 为原始数据帧。`auth / auth_ok / open / ready / close / pause / resume / ping / pong`
+构成会话；`open` 携带内网目标地址，客户端连上后回 `ready` 并双向转发。
+
+## 安全提示
+
+- 管理端口（9000）建议只对你的来源 IP 开放，或放在内网/VPN 后
+- 隧道端口（9001）是明文 TCP + 令牌认证，公网暴露时请使用强令牌并限制来源
+- 自签 HTTPS 证书仅用于路径映射，浏览器首次访问需手动信任
+
+## 许可
+
+内部/自用工具，未附带开源许可证，如需开源请自行补充。

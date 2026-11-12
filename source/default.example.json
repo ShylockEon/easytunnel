@@ -1,0 +1,6 @@
+{
+  "server": "你的公网IP:9001",
+  "token": "与服务端 config.json 里的 token 一致",
+  "name": "",
+  "adminPort": 9000
+}
