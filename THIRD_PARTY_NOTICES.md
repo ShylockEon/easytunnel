@@ -1,15 +1,35 @@
-# 第三方组件许可声明
+# Third-Party Notices / 第三方组件许可声明
+
+## English summary
+
+EasyTunnel itself is licensed under the **Apache License 2.0** (see `LICENSE`). When distributing it, the following third-party components are included:
+
+| Component | License | How it is used | Obligation |
+|---|---|---|---|
+| Node.js (https://nodejs.org/) | MIT (plus bundled third-party licenses) | Runtime embedded into `EasyTunnelClient.exe` via Node.js SEA | Ship its license text and copyright notice; the full text is in `LICENSES/Node.js-LICENSE.txt` |
+| rcedit 2.0.0 (https://github.com/electron/rcedit) | MIT, Copyright (C) 2013 GitHub, Inc. | Build-time tool that writes the exe icon/version (`source/tools/`) | Include the MIT text and copyright when distributing the binary (quoted below) |
+| postject (https://github.com/nodejs/postject) | MIT | Build-time only (fetched via `npx`), never redistributed | None for distribution; recorded for auditability |
+
+The admin console (`admin.html`) is a single file with **no CDN, external JS/CSS or font references**. The GUI uses the OS-provided PowerShell/WinForms and system fonts; no third-party UI library is redistributed. There are **no npm runtime dependencies** (the server uses only the Node.js standard library).
+
+The Chinese section below contains the same information in more detail, followed by the full MIT text.
+
+---
 
 本项目自身以 **Apache License 2.0** 授权（见 `LICENSE`）。分发时包含以下第三方组件，其许可如下。
 
-## 1. Node.js
+## 中文说明
+
+以下为中文详细说明，与上方英文摘要内容一致。
+
+### 1. Node.js
 
 - 项目：https://nodejs.org/
 - 许可：MIT（Node.js 分发包内还包含若干第三方组件的许可，见 `LICENSES/Node.js-LICENSE.txt`）
 - 使用方式：通过 Node.js SEA（Single Executable Application）打包进 `EasyTunnelClient.exe`，作为运行时随客户端分发。
 - 义务：分发包含 Node.js 的二进制时，需随附其许可文本与版权声明。本仓库已在 `LICENSES/Node.js-LICENSE.txt` 提供，并随客户端压缩包一起分发。
 
-## 2. rcedit
+### 2. rcedit
 
 - 项目：https://github.com/electron/rcedit
 - 版本：2.0.0
@@ -42,13 +62,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 3. postject
+### 3. postject
 
 - 项目：https://github.com/nodejs/postject
 - 许可：MIT
 - 使用方式：仅构建期使用（通过 `npx` 获取），不随任何发布包分发，因此无分发义务；此处记录以备审计。
 
-## 4. 未使用的组件说明
+### 4. 未使用的组件说明
 
 - 管理控制台 `admin.html` 为单文件实现，**未引用任何 CDN、外部 JS/CSS 或字体文件**。
 - 客户端图形界面使用 Windows 自带 PowerShell/WinForms 与系统字体，不随包分发第三方 UI 库。

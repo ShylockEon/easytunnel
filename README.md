@@ -15,7 +15,7 @@ A zero-dependency intranet-penetration tool: one server with a public IP + any i
 （共用管理端口，按路径前缀分流到不同内网服务），并支持 **多台客户端同时在线**：
 每台机器一个独立令牌，映射可指定目标客户端，互不干扰。
 
-> 想先了解全貌？看 **[项目介绍](docs/项目介绍.md)**（背景、架构、原理、验证数据、FAQ）。
+> 想先了解全貌？看 **[项目介绍](docs/项目介绍.md)**（背景、架构、原理、验证数据、FAQ）；英文版见 **[Project Introduction](docs/project-introduction.en.md)**。
 
 ## 特性
 
@@ -138,7 +138,7 @@ Node.js 的完整许可文本随客户端包分发放于 `LICENSES/Node.js-LICEN
 
 EasyTunnel supports **TCP port mappings** (HTTP, SSH, databases, RDP, and any other TCP service) and **HTTPS path mappings** (sharing the admin port and routing by path prefix to different internal services). Multiple clients can be online at the same time: each machine has its own token, mappings can target a specific client, and one client going offline only affects its own mappings.
 
-> Want the full picture first? See the **[Chinese project introduction](docs/项目介绍.md)** (background, architecture, protocol design, verification data, FAQ).
+> Want the full picture first? See the **[Project Introduction (English)](docs/project-introduction.en.md)** — or the [Chinese version](docs/项目介绍.md).
 
 ### Features
 
