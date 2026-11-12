@@ -1,0 +1,19 @@
+EasyTunnel
+Copyright 2026 CharlotteDe
+
+This product includes the following third-party software:
+
+1. Node.js (https://nodejs.org/)
+   License: MIT (and third-party licenses bundled by the Node.js project)
+   Usage: runtime bundled into EasyTunnelClient.exe (Node.js Single Executable Application)
+
+2. rcedit (https://github.com/electron/rcedit)
+   License: MIT
+   Usage: build-time tool used to write the executable icon and version information
+
+3. postject (https://github.com/nodejs/postject)
+   License: MIT
+   Usage: build-time tool used to inject the SEA blob into the executable (not redistributed)
+
+Full license texts are provided in THIRD_PARTY_NOTICES.md and the LICENSES/ directory.
+This product's own source code is licensed under the Apache License, Version 2.0 (see LICENSE).

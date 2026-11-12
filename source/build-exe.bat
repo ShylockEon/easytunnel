@@ -1,3 +1,5 @@
+@REM SPDX-License-Identifier: Apache-2.0
+@REM Copyright 2026 CharlotteDe
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"

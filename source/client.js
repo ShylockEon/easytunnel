@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 CharlotteDe
+
 'use strict';
 /* ============================================================
  * EasyTunnel 客户端  ——  放在内网那台机器上

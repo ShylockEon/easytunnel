@@ -109,4 +109,10 @@ node server.js
 
 ## 许可
 
-内部/自用工具，未附带开源许可证，如需开源请自行补充。
+本项目以 **Apache License 2.0** 开源，见 [LICENSE](LICENSE)。
+
+分发时包含的第三方组件（Node.js 运行时、rcedit 构建工具）及其许可见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [NOTICE](NOTICE)；
+Node.js 的完整许可文本随客户端包分发放于 `LICENSES/Node.js-LICENSE.txt`。
+
+> 使用「EasyTunnel」名称不构成商标授权；Apache 2.0 仅授予版权与专利许可。

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 CharlotteDe
+
 # 由 icon-1024.png 生成 icon-128.png / icon-64.png / icon.ico（多尺寸 PNG 压缩 ICO）
 # 用法： powershell -NoProfile -ExecutionPolicy Bypass -File make-icon.ps1
 $ErrorActionPreference = 'Stop'

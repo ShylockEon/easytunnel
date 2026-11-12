@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 CharlotteDe
+
 'use strict';
 /* ============================================================
  * 一键把 client.js 打包成 Windows 单文件 EasyTunnelClient.exe
