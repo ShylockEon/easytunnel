@@ -98,11 +98,13 @@ function readConfigSync() {
   const token = A.token || process.env.ET_TOKEN || file.token || builtin.token || '';
   const name = A.name || process.env.ET_NAME || file.name || builtin.name || os.hostname();
   const ap = Number(A['admin-port'] || process.env.ET_ADMIN_PORT || file.adminPort || builtin.adminPort || 9000);
+  const clientId = file.clientId || builtin.clientId || '';
   if (!server || !token) return null;
   return {
     server: server,
     token: token,
     name: name,
+    clientId: clientId,
     adminPort: (Number.isInteger(ap) && ap >= 1 && ap <= 65535) ? ap : 9000
   };
 }
@@ -112,7 +114,7 @@ async function resolveSettings() {
   return s;
 }
 
-let SERVER, TOKEN, NAME, HOST, PORT, ADMIN_PORT;
+let SERVER, TOKEN, NAME, CLIENT_ID, HOST, PORT, ADMIN_PORT;
 
 // GUI 版 exe 没有控制台，日志落盘；同时兼容源码脚本 / 控制台运行。
 // 日志改为内存队列 + 异步批量落盘，避免每转发一次连接就同步写盘造成卡顿。
@@ -347,7 +349,7 @@ async function waitForConfig(timeoutMs) {
   throw new Error('等待配置超时：请在窗口中填写服务端地址和令牌');
 }
 function applyConfig(s) {
-  SERVER = s.server; TOKEN = s.token; NAME = s.name;
+  SERVER = s.server; TOKEN = s.token; NAME = s.name; CLIENT_ID = s.clientId || '';
   statusInfo.server = SERVER;
   ADMIN_PORT = Number(s.adminPort) || 9000;
   const cut = SERVER.lastIndexOf(':');
@@ -606,7 +608,7 @@ function handleCtrl(ch, payload) {
       for (let i = 0; i < 60; i++) { series.in[i] = 0; series.out[i] = 0; }
       lastSample = { t: Date.now(), in: 0, out: 0 };
       pingAt = 0; latency = 0;
-      log('已连接服务端 ' + HOST + ':' + PORT + '，等待映射请求', 'OK');
+      log('已连接服务端 ' + HOST + ':' + PORT + (msg.name ? '（' + msg.name + '）' : '') + '，等待映射请求', 'OK');
       setStatus('已连接 · ' + HOST + ':' + PORT + ' · 映射在管理页配置', 'online');
       return;
     }
@@ -694,7 +696,7 @@ function connect() {
   });
 
   s.on('connect', () => {
-    s.write(frame(1, 0, Buffer.from(JSON.stringify({ t: 'auth', token: TOKEN, name: NAME }), 'utf8')));
+    s.write(frame(1, 0, Buffer.from(JSON.stringify({ t: 'auth', token: TOKEN, name: NAME, clientId: CLIENT_ID }), 'utf8')));
     lastPong = Date.now();
     clearInterval(beat);
     beat = setInterval(() => {

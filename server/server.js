@@ -43,6 +43,28 @@ function loadCfg() {
   c.token = c.token || crypto.randomBytes(16).toString('hex');
   c.mappings = Array.isArray(c.mappings) ? c.mappings : [];
   c.pathMappings = Array.isArray(c.pathMappings) ? c.pathMappings : [];
+  // 多客户端：每个客户端一个稳定 id + 独立令牌；旧配置没有 clients 时自动迁移为单个默认客户端
+  const rawClients = Array.isArray(c.clients) ? c.clients : [];
+  const seen = new Set();
+  c.clients = rawClients
+    .map(x => ({
+      id: String((x && x.id) || '').slice(0, 32),
+      name: String((x && x.name) || '').slice(0, 40),
+      token: String((x && x.token) || '')
+    }))
+    .filter(x => x.token);
+  for (const cl of c.clients) {
+    if (!cl.id || seen.has(cl.id)) cl.id = 'c' + crypto.randomBytes(3).toString('hex');
+    seen.add(cl.id);
+    if (!cl.name) cl.name = '客户端 ' + cl.id;
+  }
+  if (!c.clients.length) {
+    c.clients.push({
+      id: 'c0', name: '默认客户端',
+      token: c.token || crypto.randomBytes(16).toString('hex')
+    });
+  }
+  c.token = c.clients[0].token;   // 兼容旧字段与旧版客户端
   c.httpsEnabled = c.httpsEnabled !== false;
   c.publicHost = typeof c.publicHost === 'string' ? c.publicHost : '';  // 客户端连接用的公网 IP / 域名，在管理页配置
   return c;
@@ -168,7 +190,7 @@ function decoder(onFrame) {
 
 /* ---------------------- 运行时状态 ---------------------- */
 const S = {
-  client: null,             // { sock, name, ip, authed, since, timer }
+  clients: new Map(),       // clientId -> { id, sock, name, ip, authed, since, lastRecv }
   channels: new Map(),      // ch -> { pub, ready, pending, pendingBytes, timer, ps }
   listeners: new Map(),     // publicPort -> net.Server
   listenerError: {},        // publicPort -> 错误信息
@@ -216,22 +238,47 @@ function pathStats(id) {
   return s;
 }
 
-function writeClient(buf) {
-  const c = S.client;
-  if (!c || !c.authed || c.sock.destroyed) return false;
-  const ok = c.sock.write(buf);
+function onlineClients() {
+  const out = [];
+  for (const c of S.clients.values()) if (c.authed && c.sock && !c.sock.destroyed) out.push(c);
+  return out;
+}
+function primaryClient() { return onlineClients()[0] || null; }
+
+/* 解析映射目标客户端：指定了 clientId 就必须在线；未指定则落到任一在线客户端 */
+function resolveConnFor(target) {
+  const id = target && target.clientId;
+  if (id) {
+    const c = S.clients.get(id);
+    return (c && c.authed && c.sock && !c.sock.destroyed) ? c : null;
+  }
+  return primaryClient();
+}
+
+function isClientOnline(id) {
+  if (!id) return onlineClients().length > 0;   // 自动：任一在线即可
+  const c = S.clients.get(id);
+  return !!(c && c.authed && c.sock && !c.sock.destroyed);
+}
+
+function writeConn(conn, buf) {
+  if (!conn || !conn.authed || !conn.sock || conn.sock.destroyed) return false;
+  const ok = conn.sock.write(buf);
   if (!ok) pauseAllPublic();     // 控制连接背压：暂停所有公网来源
   return ok;
 }
-/* 转发数据帧（零拷贝写），与 writeClient 保持同样的背压语义 */
-function writeClientData(ch, payload) {
-  const c = S.client;
-  if (!c || !c.authed || c.sock.destroyed) return false;
-  const ok = writeFrame(c.sock, 2, ch, payload);
+/* 转发数据帧（零拷贝写），与 writeConn 保持同样的背压语义 */
+function writeConnData(conn, ch, payload) {
+  if (!conn || !conn.authed || !conn.sock || conn.sock.destroyed) return false;
+  const ok = writeFrame(conn.sock, 2, ch, payload);
   if (!ok) pauseAllPublic();
   return ok;
 }
-function sendCtrl(ch, obj) { return writeClient(ctrl(ch, obj)); }
+function sendCtrlTo(conn, ch, obj) { return writeConn(conn, ctrl(ch, obj)); }
+/* 关闭某个客户端的全部通道（顶替/掉线时用） */
+function closeChannelsOf(conn) {
+  for (const [ch, c] of [...S.channels]) if (c.conn === conn) closeChannel(ch, false);
+}
 function pauseAllPublic() {
   for (const c of S.channels.values()) if (c.ready && !c.pub.destroyed) c.pub.pause();
 }
@@ -245,7 +292,7 @@ function closeChannel(ch, notifyClient) {
   S.channels.delete(ch);
   if (c.timer) clearTimeout(c.timer);
   if (!c.pub.destroyed) c.pub.destroy();
-  if (notifyClient) sendCtrl(ch, { t: 'close' });
+  if (notifyClient && c.conn) sendCtrlTo(c.conn, ch, { t: 'close' });
 }
 // 映射变更时断开该端口上的存量连接，保证「改完立即生效」
 function killChannelsOnPort(port) {
@@ -324,13 +371,14 @@ function applyMappings() {
 /* 把一条公网/本地 TCP 连接挂到客户端通道上。
  * target: { port, pathId, localHost, localPort, name, stats } */
 function attachTunnel(pub, target, label) {
-  if (!S.client || !S.client.authed) { pub.destroy(); return false; }
+  const conn = resolveConnFor(target);
+  if (!conn) { pub.destroy(); return false; }   // 目标客户端离线：直接放弃这条公网连接
   target.stats.total++;
   target.stats.lastAt = Date.now();
 
   const ch = ++S.seq;
   const c = {
-    pub, port: target.port || null, pathId: target.pathId || null,
+    conn, pub, port: target.port || null, pathId: target.pathId || null,
     ready: false, pending: [], pendingBytes: 0, timer: null, ps: target.stats
   };
   S.channels.set(ch, c);
@@ -354,13 +402,13 @@ function attachTunnel(pub, target, label) {
       cur.pending.push(Buffer.from(d));   // 暂存路径显式拷贝，避免切片持有整块 socket 缓冲
       return;
     }
-    writeClientData(ch, d);
+    writeConnData(cur.conn, ch, d);
   });
   const bye = () => closeChannel(ch, true);
   pub.on('close', bye);
   pub.on('error', bye);
 
-  sendCtrl(ch, { t: 'open', host: target.localHost, port: Number(target.localPort), name: target.name || '' });
+  sendCtrlTo(conn, ch, { t: 'open', host: target.localHost, port: Number(target.localPort), name: target.name || '' });
   log('新连接 #' + ch + '  ' + label + ' -> ' + target.localHost + ':' + target.localPort);
   return true;
 }
@@ -370,6 +418,7 @@ function onPublicConnection(pub, port) {
   const m = findMapping(port);
   if (!m) { pub.destroy(); return; }
   attachTunnel(pub, {
+    clientId: m.clientId || '',
     port: port,
     localHost: m.localHost,
     localPort: m.localPort,
@@ -415,6 +464,7 @@ function loadTls() {
 function startPathForwarder(pm) {
   const srv = net.createServer(sock => {
     attachTunnel(sock, {
+      clientId: pm.clientId || '',
       pathId: pm.id,
       localHost: pm.localHost,
       localPort: pm.localPort,
@@ -605,7 +655,9 @@ function onClientFrame(conn, type, ch, payload) {
     try { msg = JSON.parse(payload.toString('utf8')); } catch (_) { return; }
 
     if (msg.t === 'auth') {
-      if (!safeEqual(msg.token, cfg.token)) {
+      // 每客户端一个独立令牌；命中哪条就归属哪个客户端
+      const entry = cfg.clients.find(cl => safeEqual(msg.token, cl.token));
+      if (!entry) {
         try { conn.sock.write(ctrl(0, { t: 'err', msg: '令牌错误' })); } catch (_) { /* ignore */ }
         setTimeout(() => conn.sock.destroy(), 150);
         log('客户端令牌校验失败，已拒绝 (' + conn.ip + ')', '!!');
@@ -613,31 +665,32 @@ function onClientFrame(conn, type, ch, payload) {
       }
       clearTimeout(conn.timer);
       conn.authed = true;
-      conn.name = String(msg.name || 'unnamed').slice(0, 40);
+      conn.id = entry.id;
+      conn.name = entry.name;
+      conn.reportedName = String(msg.name || '').slice(0, 40);
       conn.since = Date.now();
       conn.lastRecv = Date.now();
-      // 只有通过令牌校验的连接才顶替旧客户端并清理旧通道。
-      // 9001 暴露在公网，端口扫描 / 健康检查 / 任意裸 TCP 连接都会触发；
-      // 若在 TCP 建立瞬间就顶替，会把已认证客户端踢下线约 1 秒（表现为反复断线重连）。
-      if (S.client && S.client !== conn) {
-        try { S.client.sock.destroy(); } catch (_) { /* ignore */ }
+      // 同一客户端重连/顶替：只清掉它自己的旧连接与旧通道，不影响其它客户端
+      const old = S.clients.get(entry.id);
+      if (old && old !== conn) {
+        try { old.sock.destroy(); } catch (_) { /* ignore */ }
+        closeChannelsOf(old);
       }
-      for (const ch of [...S.channels.keys()]) closeChannel(ch, false);
-      S.client = conn;
-      conn.sock.write(ctrl(0, { t: 'auth_ok' }));
-      log('客户端已上线：' + conn.name + ' (' + conn.ip + ')', 'OK');
+      S.clients.set(entry.id, conn);
+      conn.sock.write(ctrl(0, { t: 'auth_ok', cid: entry.id, name: conn.name }));
+      log('客户端已上线：' + conn.name + ' [' + entry.id + '] (' + conn.ip + ')', 'OK');
       return;
     }
-    if (!conn.authed || S.client !== conn) return;
+    if (!conn.authed || S.clients.get(conn.id) !== conn) return;
 
     switch (msg.t) {
       case 'ready': {
         const c = S.channels.get(ch);
-        if (!c || c.ready) return;
+        if (!c || c.conn !== conn || c.ready) return;
         clearTimeout(c.timer); c.timer = null;
         c.ready = true;
         let blocked = false;
-        for (const d of c.pending) if (!writeClientData(ch, d)) blocked = true;
+        for (const d of c.pending) if (!writeConnData(conn, ch, d)) blocked = true;
         c.pending = [];
         if (!blocked) c.pub.resume();           // 否则等控制连接 drain 统一恢复
         break;
@@ -647,31 +700,31 @@ function onClientFrame(conn, type, ch, payload) {
         break;
       case 'pause': {
         const c = S.channels.get(ch);
-        if (c && !c.pub.destroyed) c.pub.pause();
+        if (c && c.conn === conn && !c.pub.destroyed) c.pub.pause();
         break;
       }
       case 'resume': {
         const c = S.channels.get(ch);
-        if (c && c.ready && !c.pub.destroyed) c.pub.resume();
+        if (c && c.conn === conn && c.ready && !c.pub.destroyed) c.pub.resume();
         break;
       }
       case 'ping':
-        sendCtrl(0, { t: 'pong' });
+        sendCtrlTo(conn, 0, { t: 'pong' });
         break;
     }
     return;
   }
 
   if (type === 2) {
-    if (!conn.authed || S.client !== conn) return;
+    if (!conn.authed || S.clients.get(conn.id) !== conn) return;
     const c = S.channels.get(ch);
-    if (!c || !c.ready || c.pub.destroyed) return;
+    if (!c || c.conn !== conn || !c.ready || c.pub.destroyed) return;
     S.bytesOut += payload.length;
     c.ps.bytesOut += payload.length;
     if (!c.pub.write(payload)) {
-      sendCtrl(ch, { t: 'pause' });             // 让客户端暂停读内网服务
+      sendCtrlTo(conn, ch, { t: 'pause' });     // 让客户端暂停读内网服务
       c.pub.once('drain', () => {
-        if (S.channels.get(ch) === c) sendCtrl(ch, { t: 'resume' });
+        if (S.channels.get(ch) === c) sendCtrlTo(conn, ch, { t: 'resume' });
       });
     }
   }
@@ -682,20 +735,21 @@ function onClientFrame(conn, type, ch, payload) {
  *（断网、休眠、路由掉线都不会发 FIN），此时主动断开并清理，避免管理页一直显示在线、
  *  公网端口持续接住连接却没有响应。 */
 setInterval(() => {
-  const c = S.client;
-  if (!c || !c.authed || !c.sock || c.sock.destroyed) return;
-  const idle = Date.now() - (c.lastRecv || c.since || Date.now());
-  if (idle > CLIENT_IDLE_MS) {
-    log('客户端心跳超时（' + Math.round(idle / 1000) + ' 秒无数据），判定隧道离线', '!!');
-    try { c.sock.destroy(); } catch (_) { /* close 事件里统一清理 */ }
+  for (const c of S.clients.values()) {
+    if (!c.authed || !c.sock || c.sock.destroyed) continue;
+    const idle = Date.now() - (c.lastRecv || c.since || Date.now());
+    if (idle > CLIENT_IDLE_MS) {
+      log('客户端心跳超时（' + Math.round(idle / 1000) + ' 秒无数据）：' + c.name + ' [' + c.id + ']，判定离线', '!!');
+      try { c.sock.destroy(); } catch (_) { /* close 事件里统一清理 */ }
+    }
   }
 }, 5000).unref();
 
 const controlServer = net.createServer(sock => {
-  const conn = { sock, ip: sock.remoteAddress || '?', name: '', authed: false, since: 0, timer: null, lastRecv: Date.now() };
+  const conn = { sock, ip: sock.remoteAddress || '?', id: '', name: '', reportedName: '', authed: false, since: 0, timer: null, lastRecv: Date.now() };
 
   // 不在 TCP 建立瞬间顶替在线客户端（见 auth 成功分支）；
-  // 未认证连接 8 秒后自行超时退出，不污染 S.client。
+  // 未认证连接 8 秒后自行超时退出，不污染已认证的客户端表。
   conn.timer = setTimeout(() => {
     if (!conn.authed) { log('客户端认证超时，断开', '!!'); sock.destroy(); }
   }, 8000);
@@ -712,10 +766,10 @@ const controlServer = net.createServer(sock => {
   sock.on('error', e => log('控制连接错误：' + e.message, '!!'));
   sock.on('close', () => {
     clearTimeout(conn.timer);
-    if (S.client === conn) {
-      S.client = null;
-      for (const ch of [...S.channels.keys()]) closeChannel(ch, false);
-      log('客户端已离线：' + conn.name);
+    if (conn.authed && S.clients.get(conn.id) === conn) {
+      S.clients.delete(conn.id);
+      closeChannelsOf(conn);
+      log('客户端已离线：' + conn.name + ' [' + conn.id + ']');
     }
   });
   log('收到客户端连接：' + conn.ip);
@@ -797,13 +851,29 @@ function buildState() {
     tunnelPort: cfg.tunnelPort,
     publicHost: cfg.publicHost,
     tunnelError: tunnelError,
-    client: S.client && S.client.authed
-      ? {
-          online: true, name: S.client.name, ip: S.client.ip, since: S.client.since,
-          lastSeen: S.client.lastRecv || 0,
-          idleSec: Math.max(0, Math.round((Date.now() - (S.client.lastRecv || Date.now())) / 1000))
-        }
-      : { online: false },
+    client: (function () {
+      const p = primaryClient();
+      return p
+        ? { online: true, name: p.name, ip: p.ip, since: p.since,
+            lastSeen: p.lastRecv || 0,
+            idleSec: Math.max(0, Math.round((Date.now() - (p.lastRecv || Date.now())) / 1000)) }
+        : { online: false };
+    })(),
+    clients: cfg.clients.map(cl => {
+      const c = S.clients.get(cl.id);
+      const on = !!(c && c.authed && c.sock && !c.sock.destroyed);
+      let chs = 0;
+      for (const ch of S.channels.values()) if (ch.conn && ch.conn.id === cl.id) chs++;
+      const maps = cfg.mappings.filter(m => m.clientId === cl.id).length +
+        cfg.pathMappings.filter(pm => pm.clientId === cl.id).length;
+      return {
+        id: cl.id, name: cl.name, token: cl.token,
+        online: on, ip: on ? c.ip : '', since: on ? c.since : 0,
+        lastSeen: on ? (c.lastRecv || 0) : 0,
+        idleSec: on ? Math.max(0, Math.round((Date.now() - (c.lastRecv || Date.now())) / 1000)) : -1,
+        mappings: maps, channels: chs
+      };
+    }),
     clientDownload: clientZipReady(),
     https: {
       enabled: !!httpsServer,
@@ -823,9 +893,11 @@ function buildState() {
         localHost: m.localHost,
         localPort: m.localPort,
         enabled: m.enabled,
+        clientId: m.clientId || '',
+        clientName: (cfg.clients.find(cl => cl.id === m.clientId) || {}).name || '',
         status: !m.enabled ? 'off'
           : S.listenerError[m.publicPort] ? 'error'
-            : !(S.client && S.client.authed) ? 'wait'          // 隧道离线：端口在监听，但转不出去
+            : !isClientOnline(m.clientId) ? 'wait'             // 目标客户端离线：端口在监听但转不出去
               : S.listeners.has(port) ? 'on' : 'starting',
         error: S.listenerError[m.publicPort] || '',
         stats: {
@@ -850,8 +922,11 @@ function buildState() {
         stripPrefix: pm.stripPrefix !== false,
         verifyTls: pm.verifyTls === true,
         enabled: pm.enabled,
+        clientId: pm.clientId || '',
+        clientName: (cfg.clients.find(cl => cl.id === pm.clientId) || {}).name || '',
         status: !pm.enabled ? 'off'
-          : !(S.client && S.client.authed) ? 'wait' : S.pathFwd.has(pm.id) ? 'on' : 'starting',
+          : !isClientOnline(pm.clientId) ? 'wait'
+            : S.pathFwd.has(pm.id) ? 'on' : 'starting',
         stats: {
           active: activeByPath[pm.id] || 0,
           total: st.total,
@@ -881,8 +956,10 @@ function normalizeMapping(b) {
     publicPort: Number(b.publicPort),
     localHost: String(b.localHost || '127.0.0.1').trim(),
     localPort: Number(b.localPort),
+    clientId: String(b.clientId || '').trim().slice(0, 32),
     enabled: b.enabled !== false
   };
+  if (o.clientId && !cfg.clients.some(cl => cl.id === o.clientId)) throw new Error('目标客户端不存在');
   if (!Number.isInteger(o.publicPort) || o.publicPort < 1 || o.publicPort > 65535) throw new Error('公网端口需为 1~65535');
   if (!Number.isInteger(o.localPort) || o.localPort < 1 || o.localPort > 65535) throw new Error('内网端口需为 1~65535');
   if (o.publicPort === cfg.adminPort || o.publicPort === cfg.tunnelPort) throw new Error('公网端口不能与管理端口 / 隧道端口相同');
@@ -902,8 +979,10 @@ function normalizePathMapping(b) {
     scheme: b.scheme === 'https' ? 'https' : 'http',
     stripPrefix: b.stripPrefix !== false,
     verifyTls: b.verifyTls === true,
+    clientId: String(b.clientId || '').trim().slice(0, 32),
     enabled: b.enabled !== false
   };
+  if (o.clientId && !cfg.clients.some(cl => cl.id === o.clientId)) throw new Error('目标客户端不存在');
   if (o.path === '/') throw new Error('路径不能是根路径 /');
   if (o.path.length > 60) throw new Error('路径前缀最多 60 个字符');
   if (!/^\/[A-Za-z0-9_\-.~\/]*$/.test(o.path)) throw new Error('路径只能包含字母、数字、- _ . ~ /');
@@ -919,7 +998,7 @@ function normalizePathMapping(b) {
 
 // 管理页修改隧道端口后，热切换到新端口（旧客户端会断开并按新配置重连）
 function rebindTunnel(newPort) {
-  if (S.client) { try { S.client.sock.destroy(); } catch (_) { /* ignore */ } }
+  for (const c of S.clients.values()) { try { c.sock.destroy(); } catch (_) { /* ignore */ } }
   for (const ch of [...S.channels.keys()]) closeChannel(ch, false);
   tunnelError = '';
   const listen = () => controlServer.listen(newPort, '0.0.0.0', () => {
@@ -1047,8 +1126,72 @@ const adminServer = http.createServer(async (req, res) => {
     // 供管理页「下载客户端配置」使用，内容即客户端所需的全部参数
     if (pathname === '/api/client-config' && method === 'GET') {
       const h = cfg.publicHost || '127.0.0.1';
-      json(res, 200, { server: h + ':' + cfg.tunnelPort, token: cfg.token, name: '', adminPort: cfg.adminPort });
+      const cid = new URL(req.url, 'http://localhost').searchParams.get('cid') || '';
+      const cl = cid ? cfg.clients.find(x => x.id === cid) : cfg.clients[0];
+      if (!cl) { json(res, 404, { error: '客户端不存在' }); return; }
+      json(res, 200, {
+        server: h + ':' + cfg.tunnelPort, token: cl.token,
+        name: cl.name, clientId: cl.id, adminPort: cfg.adminPort
+      });
       return;
+    }
+
+    /* ---------- 客户端管理 ---------- */
+    if (pathname === '/api/clients' && method === 'POST') {
+      const b = await readBody(req);
+      const name = String(b.name || '').trim().slice(0, 40) || '客户端';
+      const cl = {
+        id: 'c' + crypto.randomBytes(3).toString('hex'),
+        name: name,
+        token: crypto.randomBytes(16).toString('hex')
+      };
+      cfg.clients.push(cl);
+      saveCfg();
+      log('新增客户端：' + cl.name + ' [' + cl.id + ']', 'OK');
+      json(res, 200, buildState());
+      return;
+    }
+    const cmatch = pathname.match(/^\/api\/clients\/([A-Za-z0-9]+)(\/token)?$/);
+    if (cmatch) {
+      const cl = cfg.clients.find(x => x.id === cmatch[1]);
+      if (!cl) { json(res, 404, { error: '客户端不存在' }); return; }
+      if (cmatch[2] === '/token' && method === 'POST') {
+        cl.token = crypto.randomBytes(16).toString('hex');
+        if (cfg.clients[0] === cl) cfg.token = cl.token;
+        saveCfg();
+        const c = S.clients.get(cl.id);
+        if (c) { try { c.sock.destroy(); } catch (_) { /* ignore */ } }
+        log('客户端令牌已重置：' + cl.name + ' [' + cl.id + ']', 'OK');
+        json(res, 200, buildState());
+        return;
+      }
+      if (method === 'PUT') {
+        const b = await readBody(req);
+        const name = String(b.name || '').trim().slice(0, 40);
+        if (!name) throw new Error('名称不能为空');
+        cl.name = name;
+        const c = S.clients.get(cl.id);
+        if (c) c.name = name;
+        saveCfg();
+        json(res, 200, buildState());
+        return;
+      }
+      if (method === 'DELETE') {
+        const used = cfg.mappings.some(m => m.clientId === cl.id) ||
+          cfg.pathMappings.some(pm => pm.clientId === cl.id);
+        if (used) throw new Error('该客户端还绑定了映射，请先把映射改成其它客户端或“自动”');
+        cfg.clients = cfg.clients.filter(x => x !== cl);
+        if (!cfg.clients.length) {
+          cfg.clients.push({ id: 'c0', name: '默认客户端', token: crypto.randomBytes(16).toString('hex') });
+        }
+        cfg.token = cfg.clients[0].token;
+        saveCfg();
+        const c = S.clients.get(cl.id);
+        if (c) { try { c.sock.destroy(); } catch (_) { /* ignore */ } }
+        log('已删除客户端：' + cl.name + ' [' + cl.id + ']', 'OK');
+        json(res, 200, buildState());
+        return;
+      }
     }
     if (pathname === '/api/mappings' && method === 'POST') {
       const b = await readBody(req);
@@ -1124,10 +1267,13 @@ const adminServer = http.createServer(async (req, res) => {
       }
     }
     if (pathname === '/api/token' && method === 'POST') {
-      cfg.token = crypto.randomBytes(16).toString('hex');
+      const cl = cfg.clients[0];
+      cl.token = crypto.randomBytes(16).toString('hex');
+      cfg.token = cl.token;
       saveCfg();
-      if (S.client) { try { S.client.sock.destroy(); } catch (_) { /* ignore */ } }
-      log('客户端令牌已重置，旧客户端已断开', 'OK');
+      const c = S.clients.get(cl.id);
+      if (c) { try { c.sock.destroy(); } catch (_) { /* ignore */ } }
+      log('客户端令牌已重置：' + cl.name, 'OK');
       json(res, 200, buildState());
       return;
     }
@@ -1176,8 +1322,11 @@ function startFront() {
       console.log('   HTTPS    : 未启用（' + (httpsError || '缺少证书') + '）');
     }
     console.log('   管理密码 : ' + cfg.adminPassword);
-    console.log('   客户端令牌: ' + cfg.token);
-    console.log('   客户端地址: 在管理页「服务端设置」填公网 IP / 端口，下载 client.json 放到 exe 同目录');
+    console.log('   客户端 (' + cfg.clients.length + ' 个):');
+    for (const cl of cfg.clients) {
+      console.log('     - ' + cl.name + ' [' + cl.id + ']  令牌: ' + cl.token);
+    }
+    console.log('   客户端地址: 在管理页「客户端」卡片下载各自的 client.json，放到 exe 同目录');
     console.log('  ============================================================');
     console.log('   服务器防火墙 / 安全组需放行：' + cfg.adminPort + '、' + cfg.tunnelPort);
     console.log('   以及网页里配置的每一个「公网端口」');

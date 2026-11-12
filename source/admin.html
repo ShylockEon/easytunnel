@@ -279,6 +279,24 @@
 
   <section class="card">
     <div class="card-head">
+      <h2>客户端 <span class="chip" id="clientCount">0 个</span></h2>
+      <button class="primary" id="addClientBtn">添加客户端</button>
+    </div>
+    <p class="hint">每台内网机器一个客户端、一个独立令牌；映射可指定目标客户端，互不影响。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>名称</th><th>状态</th><th>IP</th><th>映射</th><th>活跃连接</th>
+          <th style="text-align:right">操作</th>
+        </tr></thead>
+        <tbody id="clientTbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="clientEmpty" style="display:none">还没有客户端，点右上角「添加客户端」。</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
       <h2>映射列表 <span class="chip" id="mapCount">0 条</span></h2>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="hint" style="margin:0">访问前缀 <code id="accessBase">—</code></div>
@@ -288,7 +306,7 @@
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>名称</th><th>公网访问地址</th><th>转发到（内网）</th><th>状态</th>
+          <th>名称</th><th>客户端</th><th>公网访问地址</th><th>转发到（内网）</th><th>状态</th>
           <th>连接</th><th>下行响应</th><th>上行请求</th><th style="text-align:right">操作</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
@@ -314,7 +332,7 @@
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>名称</th><th>路径前缀</th><th>转发到（内网）</th><th>协议</th><th>状态</th>
+          <th>名称</th><th>客户端</th><th>路径前缀</th><th>转发到（内网）</th><th>协议</th><th>状态</th>
           <th>连接</th><th>下行响应</th><th>上行请求</th><th style="text-align:right">操作</th>
         </tr></thead>
         <tbody id="pathTbody"></tbody>
@@ -323,11 +341,26 @@
     <div class="empty" id="pathEmpty" style="display:none">还没有路径映射，例如把 /kod 指到内网 127.0.0.1:80。</div>
   </section>
 
+  <div class="modal-mask" id="clientModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientFormTitle">
+      <h2 id="clientFormTitle">添加客户端</h2>
+      <p class="hint">创建后会生成独立令牌；把该客户端的 client.json 放到 exe 同目录即可连接。</p>
+      <form class="form" id="clientForm" autocomplete="off">
+        <div style="grid-column:1/-1"><label for="cName">客户端名称</label><input id="cName" placeholder="例如 办公室电脑 / NAS"></div>
+        <div class="actions">
+          <button class="primary" type="submit">创建</button>
+          <button class="ghost" type="button" id="clientCancel">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-mask" id="pathModal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pathFormTitle">
       <h2 id="pathFormTitle">添加路径映射</h2>
       <p class="hint">路径前缀不能是 /、/api、/download；默认去掉前缀再转发。</p>
       <form class="form pathform" id="pathForm" autocomplete="off">
+        <div><label for="pClient">目标客户端</label><select id="pClient"></select></div>
         <div><label for="pName">名称（备注）</label><input id="pName" placeholder="例如 本地网站"></div>
         <div><label for="pPath">路径前缀</label><input id="pPath" placeholder="/kod"></div>
         <div><label for="pHost">内网地址</label><input id="pHost" value="127.0.0.1" placeholder="127.0.0.1"></div>
@@ -349,6 +382,7 @@
       <h2 id="formTitle">添加映射</h2>
       <p class="hint">内网地址相对客户端那台机器：127.0.0.1 是它本机。</p>
       <form class="form" id="mapForm" autocomplete="off">
+        <div><label for="fClient">目标客户端</label><select id="fClient"></select></div>
         <div><label for="fName">名称（备注）</label><input id="fName" placeholder="例如 本地网站 / SSH"></div>
         <div><label for="fPort">公网端口</label><input id="fPort" type="number" placeholder="18080" min="1" max="65535"></div>
         <div><label for="fHost">内网地址</label><input id="fHost" value="127.0.0.1" placeholder="127.0.0.1"></div>
@@ -613,6 +647,9 @@
     $('token')._raw = j.token;
     setText('accessBase', 'http://' + host());
     setText('mapCount', maps.length + ' 条');
+    renderClients();
+    if (!isModalOpen('mapModal')) fillClientSelect('fClient');
+    if (!isModalOpen('pathModal')) fillClientSelect('pClient');
 
     var sig = maps.map(function (m) {
       return [m.id, m.name, m.publicPort, m.localHost, m.localPort, m.enabled, m.status, m.error].join('|');
@@ -641,6 +678,46 @@
     updatePathStats();
   }
 
+  /* ---------- 多客户端 ---------- */
+  function clientOptionsHtml() {
+    var list = (state && state.clients) || [];
+    var h = '<option value="">自动（任一在线）</option>';
+    list.forEach(function (c) {
+      h += '<option value="' + esc(c.id) + '">' + esc(c.name) + (c.online ? '' : '（离线）') + '</option>';
+    });
+    return h;
+  }
+  function fillClientSelect(id) {
+    var el = $(id); if (!el) return;
+    var html = clientOptionsHtml();
+    if (el._sig !== html) {
+      var cur = el.value;
+      el.innerHTML = html; el._sig = html;
+      if (cur) el.value = cur;
+    }
+  }
+  function renderClients() {
+    var list = (state && state.clients) || [];
+    var html = list.map(function (c) {
+      var dot = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:'
+        + (c.online ? 'var(--ok)' : 'var(--err)') + '"></span>';
+      return '<tr data-cid="' + esc(c.id) + '">' +
+        '<td><b>' + esc(c.name) + '</b><div class="hint mono" style="margin:2px 0 0;font-size:11px">' + esc(c.id) + '</div></td>' +
+        '<td>' + dot + (c.online ? '在线' : '离线') + '</td>' +
+        '<td class="mono">' + (c.ip ? esc(c.ip) : '—') + '</td>' +
+        '<td class="mono">' + (c.mappings || 0) + '</td>' +
+        '<td class="mono">' + (c.channels || 0) + '</td>' +
+        '<td><div class="ops">' +
+          '<button data-cact="cfg" data-cid="' + esc(c.id) + '">复制配置</button>' +
+          '<button data-cact="token" data-cid="' + esc(c.id) + '">重置令牌</button>' +
+          '<button class="danger" data-cact="del" data-cid="' + esc(c.id) + '">删除</button>' +
+        '</div></td></tr>';
+    }).join('');
+    setHTML('clientTbody', html);
+    setText('clientCount', list.length + ' 个');
+    $('clientEmpty').style.display = list.length ? 'none' : 'block';
+  }
+
   function renderTable() {
     var maps = (state && state.mappings) || [];
     var label = { on: '运行中', off: '已停用', error: '异常', starting: '启动中', wait: '等待客户端' };
@@ -648,6 +725,7 @@
       var st = m.stats || {};
       return '<tr data-row="' + esc(m.id) + '">' +
         '<td><b>' + esc(m.name) + '</b></td>' +
+        '<td>' + (m.clientName ? esc(m.clientName) : '<span style="color:var(--dim)">自动</span>') + '</td>' +
         '<td class="mono addr">http://' + esc(host()) + ':' + esc(m.publicPort) + '</td>' +
         '<td class="mono">' + esc(m.localHost) + ':' + esc(m.localPort) + '</td>' +
         '<td><span class="tag ' + esc(m.status) + '">' + (m.status === 'error' ? esc(m.error || '端口异常') : label[m.status] || m.status) + '</span></td>' +
@@ -700,6 +778,7 @@
       var url = pathHttpsUrl(pm);
       return '<tr data-prow="' + esc(pm.id) + '">' +
         '<td><b>' + esc(pm.name) + '</b></td>' +
+        '<td>' + (pm.clientName ? esc(pm.clientName) : '<span style="color:var(--dim)">自动</span>') + '</td>' +
         '<td class="mono addr"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(pm.path) + '</a></td>' +
         '<td class="mono">' + esc(pm.localHost) + ':' + esc(pm.localPort) + '</td>' +
         '<td>' + (pm.scheme === 'https' ? 'HTTPS' : 'HTTP') + (pm.stripPrefix ? ' · 去前缀' : ' · 保留前缀') + '</td>' +
@@ -745,6 +824,7 @@
     pathEditId = null;
     if (!isModalOpen('pathModal')) {
       $('pName').value = ''; $('pPath').value = ''; $('pHost').value = '127.0.0.1'; $('pLocal').value = '';
+      if ($('pClient')) $('pClient').value = '';
       $('pScheme').value = 'http'; $('pStrip').checked = true; $('pVerify').checked = false;
       $('pathFormTitle').textContent = '添加路径映射';
       $('pathSubmit').textContent = '添加路径映射';
@@ -787,6 +867,7 @@
   function clearForm() {
     editId = null;
     $('fName').value = ''; $('fPort').value = ''; $('fHost').value = '127.0.0.1'; $('fLocal').value = '';
+    if ($('fClient')) $('fClient').value = '';
     $('formTitle').textContent = '添加映射';
     $('submitBtn').textContent = '添加映射';
   }
@@ -794,6 +875,7 @@
     var cur = (editId && state) ? state.mappings.filter(function (x) { return x.id === editId; })[0] : null;
     return {
       name: $('fName').value,
+      clientId: $('fClient').value,
       publicPort: Number($('fPort').value),
       localHost: $('fHost').value,
       localPort: Number($('fLocal').value),
@@ -894,6 +976,7 @@
     if (act === 'edit') {
       editId = id;
       $('fName').value = m.name; $('fPort').value = m.publicPort;
+      $('fClient').value = m.clientId || '';
       $('fHost').value = m.localHost; $('fLocal').value = m.localPort;
       $('formTitle').textContent = '编辑映射';
       $('submitBtn').textContent = '保存修改';
@@ -912,6 +995,48 @@
     }
   };
 
+  /* ---------- 客户端管理交互 ---------- */
+  $('addClientBtn').onclick = function () {
+    $('cName').value = '';
+    openModal('clientModal');
+    setTimeout(function () { $('cName').focus(); }, 30);
+  };
+  $('clientCancel').onclick = function () { closeModal('clientModal'); };
+  $('clientForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var name = $('cName').value.trim();
+    if (!name) { toast('请输入客户端名称', true); return; }
+    api('/api/clients', 'POST', { name: name }).then(function (j) {
+      render(j); closeModal('clientModal');
+      toast('已创建，点「复制配置」下发到对应机器');
+    }).catch(function (e) { toast(e.message, true); });
+  });
+  $('clientTbody').onclick = function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var act = btn.getAttribute('data-cact'), id = btn.getAttribute('data-cid');
+    var c = ((state && state.clients) || []).filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    if (act === 'cfg') {
+      api('/api/client-config?cid=' + encodeURIComponent(id), 'GET').then(function (j) {
+        var text = JSON.stringify({ server: j.server, token: j.token, name: j.name, clientId: j.clientId }, null, 2);
+        copyText(text);
+      }).catch(function (err) { toast(err.message, true); });
+    } else if (act === 'token') {
+      twoStep(btn, '重置令牌', function () {
+        api('/api/clients/' + id + '/token', 'POST').then(function (j) {
+          render(j); toast('令牌已重置，需重新下发该客户端配置');
+        }).catch(function (err) { toast(err.message, true); });
+      });
+    } else if (act === 'del') {
+      twoStep(btn, '删除', function () {
+        api('/api/clients/' + id, 'DELETE').then(function (j) {
+          render(j); toast('客户端已删除');
+        }).catch(function (err) { toast(err.message, true); });
+      });
+    }
+  };
+
   $('downloadCert').onclick = function () { window.location.href = '/download/cert.pem'; };
 
   $('pathCancel').onclick = function () { closeModal('pathModal'); clearPathForm(); };
@@ -925,6 +1050,7 @@
     ev.preventDefault();
     var b = {
       name: $('pName').value,
+      clientId: $('pClient').value,
       path: $('pPath').value,
       localHost: $('pHost').value,
       localPort: Number($('pLocal').value),
@@ -953,6 +1079,7 @@
     if (act === 'edit') {
       pathEditId = id;
       $('pName').value = pm.name; $('pPath').value = pm.path;
+      $('pClient').value = pm.clientId || '';
       $('pHost').value = pm.localHost; $('pLocal').value = pm.localPort;
       $('pScheme').value = pm.scheme || 'http';
       $('pStrip').checked = pm.stripPrefix !== false;
@@ -979,12 +1106,14 @@
     if (e.key !== 'Escape') return;
     if (isModalOpen('mapModal')) { closeModal('mapModal'); clearForm(); }
     if (isModalOpen('pathModal')) { closeModal('pathModal'); clearPathForm(); }
+    if (isModalOpen('clientModal')) closeModal('clientModal');
   });
-  ['mapModal', 'pathModal'].forEach(function (id) {
+  ['mapModal', 'pathModal', 'clientModal'].forEach(function (id) {
     $(id).addEventListener('mousedown', function (e) {
       if (e.target !== $(id)) return;   // 只有点遮罩本身才关
       closeModal(id);
-      if (id === 'mapModal') clearForm(); else clearPathForm();
+      if (id === 'mapModal') clearForm();
+      else if (id === 'pathModal') clearPathForm();
     });
   });
 

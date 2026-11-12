@@ -2,9 +2,15 @@
   "adminPort": 9000,
   "tunnelPort": 9001,
   "adminPassword": "请改成你自己的管理密码",
-  "token": "请改成你自己的客户端令牌",
   "mappings": [],
   "publicHost": "你的公网IP或域名",
   "pathMappings": [],
-  "httpsEnabled": true
+  "httpsEnabled": true,
+  "clients": [
+    {
+      "id": "c0",
+      "name": "默认客户端",
+      "token": "请改成随机长令牌"
+    }
+  ]
 }
