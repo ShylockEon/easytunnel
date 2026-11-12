@@ -87,6 +87,8 @@ node server.js
 单条 TCP 控制连接上多路复用：帧头 `type(1) | channelId(4) | length(4)`，`type=1` 为 JSON
 控制帧，`type=2` 为原始数据帧。`auth / auth_ok / open / ready / close / pause / resume / ping / pong`
 构成会话；`open` 携带内网目标地址，客户端连上后回 `ready` 并双向转发。
+客户端需每 ≤30 秒发送一次 `ping`；服务端 30 秒收不到任何帧即判定隧道离线，
+主动断开并清理通道（应对断网/休眠造成的 TCP 半开），此时管理页映射状态显示「等待客户端」。
 
 ## 安全提示
 

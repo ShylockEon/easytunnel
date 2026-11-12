@@ -26,6 +26,7 @@ const DIR = __dirname;
 const CFG_FILE = path.join(DIR, 'config.json');
 const ADMIN_HTML = path.join(DIR, 'admin.html');
 const VERSION = '2.4.0';
+const CLIENT_IDLE_MS = 30000;   // 认证后 30 秒没有任何帧（含 5 秒一次的 ping）即判定隧道离线
 const DOWNLOADS_DIR = path.join(DIR, 'downloads');
 const CLIENT_ZIP = path.join(DOWNLOADS_DIR, 'client.zip');
 const CERTS_DIR = path.join(DIR, 'certs');
@@ -614,6 +615,7 @@ function onClientFrame(conn, type, ch, payload) {
       conn.authed = true;
       conn.name = String(msg.name || 'unnamed').slice(0, 40);
       conn.since = Date.now();
+      conn.lastRecv = Date.now();
       // 只有通过令牌校验的连接才顶替旧客户端并清理旧通道。
       // 9001 暴露在公网，端口扫描 / 健康检查 / 任意裸 TCP 连接都会触发；
       // 若在 TCP 建立瞬间就顶替，会把已认证客户端踢下线约 1 秒（表现为反复断线重连）。
@@ -675,8 +677,22 @@ function onClientFrame(conn, type, ch, payload) {
   }
 }
 
+
+/* 隧道离线判定：客户端每 5 秒发 ping，认证后 30 秒收不到任何帧说明连接已半开
+ *（断网、休眠、路由掉线都不会发 FIN），此时主动断开并清理，避免管理页一直显示在线、
+ *  公网端口持续接住连接却没有响应。 */
+setInterval(() => {
+  const c = S.client;
+  if (!c || !c.authed || !c.sock || c.sock.destroyed) return;
+  const idle = Date.now() - (c.lastRecv || c.since || Date.now());
+  if (idle > CLIENT_IDLE_MS) {
+    log('客户端心跳超时（' + Math.round(idle / 1000) + ' 秒无数据），判定隧道离线', '!!');
+    try { c.sock.destroy(); } catch (_) { /* close 事件里统一清理 */ }
+  }
+}, 5000).unref();
+
 const controlServer = net.createServer(sock => {
-  const conn = { sock, ip: sock.remoteAddress || '?', name: '', authed: false, since: 0, timer: null };
+  const conn = { sock, ip: sock.remoteAddress || '?', name: '', authed: false, since: 0, timer: null, lastRecv: Date.now() };
 
   // 不在 TCP 建立瞬间顶替在线客户端（见 auth 成功分支）；
   // 未认证连接 8 秒后自行超时退出，不污染 S.client。
@@ -689,6 +705,7 @@ const controlServer = net.createServer(sock => {
     catch (e) { log('协议错误：' + e.message, '!!'); sock.destroy(); }
   });
   sock.on('data', chunk => {
+    conn.lastRecv = Date.now();
     try { feed(chunk); } catch (e) { log('连接异常：' + e.message, '!!'); sock.destroy(); }
   });
   sock.on('drain', resumeAllPublic);
@@ -781,7 +798,11 @@ function buildState() {
     publicHost: cfg.publicHost,
     tunnelError: tunnelError,
     client: S.client && S.client.authed
-      ? { online: true, name: S.client.name, ip: S.client.ip, since: S.client.since }
+      ? {
+          online: true, name: S.client.name, ip: S.client.ip, since: S.client.since,
+          lastSeen: S.client.lastRecv || 0,
+          idleSec: Math.max(0, Math.round((Date.now() - (S.client.lastRecv || Date.now())) / 1000))
+        }
       : { online: false },
     clientDownload: clientZipReady(),
     https: {
@@ -804,7 +825,8 @@ function buildState() {
         enabled: m.enabled,
         status: !m.enabled ? 'off'
           : S.listenerError[m.publicPort] ? 'error'
-            : S.listeners.has(port) ? 'on' : 'starting',
+            : !(S.client && S.client.authed) ? 'wait'          // 隧道离线：端口在监听，但转不出去
+              : S.listeners.has(port) ? 'on' : 'starting',
         error: S.listenerError[m.publicPort] || '',
         stats: {
           active: activeByPort[port] || 0,
@@ -828,7 +850,8 @@ function buildState() {
         stripPrefix: pm.stripPrefix !== false,
         verifyTls: pm.verifyTls === true,
         enabled: pm.enabled,
-        status: !pm.enabled ? 'off' : S.pathFwd.has(pm.id) ? 'on' : 'starting',
+        status: !pm.enabled ? 'off'
+          : !(S.client && S.client.authed) ? 'wait' : S.pathFwd.has(pm.id) ? 'on' : 'starting',
         stats: {
           active: activeByPath[pm.id] || 0,
           total: st.total,
