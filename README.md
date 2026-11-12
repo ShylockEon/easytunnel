@@ -1,7 +1,17 @@
 # EasyTunnel
 
+**简体中文** · [English](#english)
+
 零依赖的内网穿透工具：一台有公网 IP 的服务器 + 任意内网机器（Windows 单文件客户端），
 浏览器里配置映射，保存即生效，无需改配置文件、无需重启。
+
+A zero-dependency intranet-penetration tool: one server with a public IP + any internal machine (a single-file Windows client). Configure mappings in the browser and they take effect immediately — no config files, no restarts.
+
+---
+
+<a id="chinese"></a>
+
+## 简介
 
 支持 **TCP 端口映射**（HTTP / SSH / 数据库 / 远程桌面等）与 **HTTPS 路径映射**
 （共用管理端口，按路径前缀分流到不同内网服务），并支持 **多台客户端同时在线**：
@@ -121,3 +131,116 @@ node server.js
 Node.js 的完整许可文本随客户端包分发放于 `LICENSES/Node.js-LICENSE.txt`。
 
 > 使用「EasyTunnel」名称不构成商标授权；Apache 2.0 仅授予版权与专利许可。
+
+---
+
+<a id="english"></a>
+
+## English
+
+### Overview
+
+EasyTunnel supports **TCP port mappings** (HTTP, SSH, databases, RDP, and any other TCP service) and **HTTPS path mappings** (sharing the admin port and routing by path prefix to different internal services). Multiple clients can be online at the same time: each machine has its own token, mappings can target a specific client, and one client going offline only affects its own mappings.
+
+> Want the full picture first? See the **[Chinese project introduction](docs/项目介绍.md)** (background, architecture, protocol design, verification data, FAQ).
+
+### Features
+
+- **Zero-dependency server**: plain Node.js standard library — run with `node server.js`, or use Docker
+- **Single-file client**: a ~84 MB `EasyTunnelClient.exe` for Windows; no Node.js installation required
+- **Configure in the browser**: port mappings, path mappings, public host and tokens are all managed in the admin page and take effect immediately
+- **Dark admin console**: live throughput chart, per-mapping traffic stats, connection counts, HTTPS certificate info
+- **Reliable forwarding**: custom frame protocol (9-byte header + channel multiplexing), backpressure via `pause`/`resume`, heartbeat with 40-second self-healing, automatic reconnect, and soft-close of keep-alive connections (large downloads are never truncated)
+- **HTTPS path mapping**: the admin port dispatches TLS vs. plaintext by the first byte; the self-signed certificate can be downloaded and installed
+- **Multi-client**: an isolated per-client connection pool; mappings are bound to a target client; one client dropping out affects only its own mappings
+- **Security**: admin page and API require a password; per-client tokens; login rate limiting; constant-time comparisons
+
+### Project layout
+
+```
+.
+├── source/                 Full source code (for development and packaging)
+│   ├── server.js           Server
+│   ├── admin.html          Admin console (single file, dark UI)
+│   ├── client.js           Client (protocol + GUI launcher)
+│   ├── gui.ps1             Client GUI (WinForms, embedded into the exe)
+│   ├── build-exe.js        Builds the single-file exe (Node SEA + postject)
+│   ├── default.example.json Built-in client config template (copy to default.json before building)
+│   ├── docker-compose.yml
+│   └── icon/ tools/        Icon and rcedit (writes exe icon/version info)
+├── server/                 Deployment directory for the server
+│   ├── server.js  admin.html  docker-compose.yml
+│   ├── config.example.json Config template (copy to config.json)
+│   ├── certs/              HTTPS certificate (cert.pem / key.pem, self-signed is fine)
+│   └── downloads/          client.zip served by the admin page's "Download client" button
+└── client/                 Distribution directory for the client
+    ├── client.example.json Config template (copy to client.json)
+    └── (EasyTunnelClient.exe is a build artifact and is not committed)
+```
+
+> The repository does not include the exe or the zip release packages. Runtime-generated
+> `config.json`, `client.json` and `default.json` contain passwords/tokens and are excluded by `.gitignore`.
+
+### Quick start
+
+#### 1. Server (public server)
+
+```bash
+cd server
+cp config.example.json config.json     # Optional: it also works without this; a password/token is generated on first run
+docker compose up -d                   # or: node server.js
+docker compose logs easytunnel         # shows the admin password and client tokens
+```
+
+Admin page: `http://<PUBLIC_IP>:9000` (password from the config file or the startup log).
+
+> `docker-compose.yml` uses `network_mode: host`: public ports are added from the web UI at any time and
+> the container listens on the host directly, so you never edit compose or recreate the container for a new port.
+> Remember to allow 9000, 9001 and every mapping's public port in your cloud security group / firewall.
+
+#### 2. Client (internal machine; multiple are supported)
+
+Admin page → "Clients" card → "Add client" → enter a name → click "Copy config" on that row, then put the resulting `client.json` next to `EasyTunnelClient.exe` on the target machine and double-click it (you can also type the address and token directly in the GUI). Each machine uses its own config; none of them replaces another.
+
+> A legacy single-client config (only `token`, no `clients`) is migrated to a "Default client" on startup;
+> the original token keeps working, so upgrading does not break deployed clients.
+
+#### 3. Add a mapping
+
+Admin page → "Mappings" → "Add mapping": pick the **target client** (or "Auto" = any online client), enter the public port → internal `host:port` (e.g. `18080 → 127.0.0.1:8080`). Visiting `http://<PUBLIC_IP>:18080` then reaches the service on that client machine. Path mappings work the same way, e.g. `https://<PUBLIC_IP>:9000/kod/`. When the target client is offline, the mapping shows "waiting for client".
+
+### Build from source
+
+```bash
+# Client exe (Windows, Node >= 20; postject is fetched via npx on the first build)
+cd source
+cp default.example.json default.json   # Fill in your own server address and token (optional; you can also leave it empty)
+node build-exe.js                      # Output: EasyTunnelClient.exe
+
+# The server needs no build step
+node server.js
+```
+
+### Protocol summary
+
+Everything is multiplexed over a single TCP control connection. Frame header: `type(1) | channelId(4) | length(4)`, where `type=1` is a JSON control frame and `type=2` is a raw data frame. The session is built from `auth / auth_ok / open / ready / close / pause / resume / ping / pong`; `open` carries the internal target address, and the client replies `ready` after connecting, then forwards data in both directions.
+
+A client authenticates with a `token` (which identifies the client) and a `clientId` (for display). Clients must send a `ping` at least every 30 seconds; the server times each client independently and, after 30 seconds without any frame, marks that client offline, closes the socket and cleans up its channels (covering TCP half-open connections caused by network loss or sleep). Mappings of that client then show "waiting for client".
+
+### Security notes
+
+- Restrict the admin port (9000) to your own source IPs, or put it behind a VPN
+- The tunnel port (9001) is plaintext TCP with token authentication — use a strong token and restrict sources when exposed to the internet
+- The self-signed HTTPS certificate is only used for path mappings; browsers need to trust it manually on first visit
+
+### Acceptable use
+
+This tool is intended for networks and services that you **own or are authorized to access**, for remote operations and integration testing. Do not use it for unauthorized access, to penetrate networks you do not own, or to bypass access controls. You are responsible for how you use it.
+
+### License
+
+Licensed under the **Apache License 2.0** — see [LICENSE](LICENSE).
+
+Third-party components distributed with this project (the Node.js runtime and the rcedit build tool) and their licenses are described in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [NOTICE](NOTICE). The full Node.js license text ships with the client package at `LICENSES/Node.js-LICENSE.txt`.
+
+> The "EasyTunnel" name is not granted as a trademark; Apache 2.0 grants copyright and patent rights only.
