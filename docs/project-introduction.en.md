@@ -223,6 +223,7 @@ Each machine uses its own config; none of them replaces another.
 
 ## 11. Version history
 
+- **v2.4.1**: one-click copy for public access addresses (port mappings, path mappings and access prefix)
 - **v2.4.0**: multi-client (pool + mapping binding + per-client tokens), client rename, modal mapping forms, tunnel offline detection, zero-copy writes and decoder optimization
 - **v2.3.0**: HTTPS path mappings, self-signed certificate download, per-mapping rate stats, dark admin redesign
 - Earlier: single-client version, Docker deployment, Windows single-file exe
@@ -261,6 +262,6 @@ No. Keep-alive soft close plus backpressure preserves trailing bytes; verified w
 ## 14. Project information
 
 - Repository: https://gitee.com/ShylockEon/easytunnel
-- Releases: https://gitee.com/ShylockEon/easytunnel/releases/tag/v2.4.0
+- Releases: https://gitee.com/ShylockEon/easytunnel/releases/tag/v2.4.1
 - Stack: Node.js (server), JavaScript + PowerShell/WinForms (client), plain HTML/CSS/JS (console)
 - License: Apache License 2.0 (see `LICENSE`); third-party notices in `THIRD_PARTY_NOTICES.md`

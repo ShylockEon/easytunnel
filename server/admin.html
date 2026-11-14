@@ -114,6 +114,18 @@
   tbody tr{transition:background .15s}
   tbody tr:hover{background:rgba(255,255,255,.025)}
   .addr{color:#ffc79a}
+  .copy-addr{display:inline-flex;align-items:center;gap:8px;padding:4px 8px;margin:-4px -8px;
+    background:transparent;border:1px solid transparent;border-radius:8px;color:#ffc79a;
+    font:inherit;cursor:pointer;text-align:left;white-space:nowrap;transition:background .15s,border-color .15s}
+  .copy-addr:hover{background:rgba(255,199,154,.08);border-color:rgba(255,199,154,.22)}
+  .copy-addr:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .copy-addr .ca-tip{font-size:10px;color:var(--dim2);border:1px solid var(--line);padding:1px 5px;border-radius:5px;opacity:.7}
+  .copy-addr:hover .ca-tip{color:#ffc79a;border-color:rgba(255,199,154,.35);opacity:1}
+  .copy-mini{margin-left:6px;padding:2px 7px;font-size:11px;border-radius:6px;
+    background:transparent;border:1px solid var(--line);color:var(--dim);cursor:pointer;transition:.15s}
+  .copy-mini:hover{color:#ffc79a;border-color:rgba(255,199,154,.35)}
+  .copyable{cursor:pointer;transition:color .15s}
+  .copyable:hover{color:#ffc79a}
   .tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 9px;border-radius:999px;
     border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
   .tag.on{color:var(--ok);border-color:rgba(63,212,139,.35);background:rgba(63,212,139,.09)}
@@ -300,7 +312,7 @@
     <div class="card-head">
       <h2>映射列表 <span class="chip" id="mapCount">0 条</span></h2>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div class="hint" style="margin:0">访问前缀 <code id="accessBase">—</code></div>
+        <div class="hint" style="margin:0">访问前缀 <code id="accessBase" class="copyable" title="点击复制访问前缀">—</code></div>
         <button class="primary" id="addMapBtn">添加映射</button>
       </div>
     </div>
@@ -734,6 +746,11 @@
     $('clientEmpty').style.display = list.length ? 'none' : 'block';
   }
 
+  function copyAddrHtml(url) {
+    return '<button type="button" class="copy-addr mono" data-copy="' + esc(url) + '" title="点击复制公网访问地址">' +
+      '<span>' + esc(url) + '</span><span class="ca-tip">复制</span></button>';
+  }
+
   function renderTable() {
     var maps = (state && state.mappings) || [];
     var label = { on: '运行中', off: '已停用', error: '异常', starting: '启动中', wait: '等待客户端' };
@@ -742,7 +759,7 @@
       return '<tr data-row="' + esc(m.id) + '">' +
         '<td><b>' + esc(m.name) + '</b></td>' +
         '<td>' + (m.clientName ? esc(m.clientName) : '<span style="color:var(--dim)">自动</span>') + '</td>' +
-        '<td class="mono addr">http://' + esc(host()) + ':' + esc(m.publicPort) + '</td>' +
+        '<td>' + copyAddrHtml('http://' + host() + ':' + m.publicPort) + '</td>' +
         '<td class="mono">' + esc(m.localHost) + ':' + esc(m.localPort) + '</td>' +
         '<td><span class="tag ' + esc(m.status) + '">' + (m.status === 'error' ? esc(m.error || '端口异常') : label[m.status] || m.status) + '</span></td>' +
         '<td class="mono" data-s="act">' + (Number(st.active) || 0) + '</td>' +
@@ -795,7 +812,8 @@
       return '<tr data-prow="' + esc(pm.id) + '">' +
         '<td><b>' + esc(pm.name) + '</b></td>' +
         '<td>' + (pm.clientName ? esc(pm.clientName) : '<span style="color:var(--dim)">自动</span>') + '</td>' +
-        '<td class="mono addr"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(pm.path) + '</a></td>' +
+        '<td class="mono addr"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(pm.path) + '</a>' +
+          '<button type="button" class="copy-mini" data-copy="' + esc(url) + '" title="复制完整访问地址">复制</button></td>' +
         '<td class="mono">' + esc(pm.localHost) + ':' + esc(pm.localPort) + '</td>' +
         '<td>' + (pm.scheme === 'https' ? 'HTTPS' : 'HTTP') + (pm.stripPrefix ? ' · 去前缀' : ' · 保留前缀') + '</td>' +
         '<td><span class="tag ' + esc(pm.status) + '">' + (label[pm.status] || pm.status) + '</span></td>' +
@@ -918,6 +936,7 @@
 
   $('logoutBtn').onclick = logout;
   $('refreshBtn').onclick = function () { refresh(); toast('已刷新'); };
+  $('accessBase').onclick = function () { copyText('http://' + host()); };
 
   function settingsBody() {
     return { publicHost: $('sHost').value, tunnelPort: Number($('sPort').value) };
@@ -984,6 +1003,8 @@
   });
 
   $('tbody').onclick = function (e) {
+    var cp = e.target.closest('[data-copy]');
+    if (cp) { copyText(cp.getAttribute('data-copy')); return; }
     var btn = e.target.closest('button');
     if (!btn) return;
     var act = btn.getAttribute('data-act'), id = btn.getAttribute('data-id');
@@ -1105,6 +1126,8 @@
   });
 
   $('pathTbody').onclick = function (e) {
+    var cp = e.target.closest('[data-copy]');
+    if (cp) { copyText(cp.getAttribute('data-copy')); return; }
     var btn = e.target.closest('button');
     if (!btn) return;
     var act = btn.getAttribute('data-pact'), id = btn.getAttribute('data-pid');
